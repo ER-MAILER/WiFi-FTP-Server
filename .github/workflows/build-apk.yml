@@ -57,6 +57,17 @@ jobs:
     - name: Change wrapper permissions
       run: chmod +x gradlew
 
+    - name: Ensure Environment Configuration Files Exist
+      run: |
+        if [ ! -f .env.example ]; then
+          echo "Creating dummy .env.example..."
+          echo "REMEDY_API_KEY=dummy_value" > .env.example
+        fi
+        if [ ! -f .env ]; then
+          echo "Creating dummy .env..."
+          echo "REMEDY_API_KEY=dummy_value" > .env
+        fi
+
     - name: Build Debug APK
       run: ./gradlew assembleDebug
 

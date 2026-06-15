@@ -68,6 +68,19 @@ jobs:
           echo "REMEDY_API_KEY=dummy_value" > .env
         fi
 
+    - name: Restore or Generate Debug Keystore File
+      run: |
+        if [ -f debug.keystore.base64 ]; then
+          echo "debug.keystore.base64 found! Decoding to debug.keystore..."
+          base64 -d debug.keystore.base64 > debug.keystore
+        elif [ -f app/debug.keystore.base64 ]; then
+          echo "app/debug.keystore.base64 found! Decoding to debug.keystore..."
+          base64 -d app/debug.keystore.base64 > debug.keystore
+        else
+          echo "debug.keystore.base64 not found. Creating a new debug.keystore with keytool..."
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+        fi
+
     - name: Build Debug APK
       run: ./gradlew assembleDebug
 

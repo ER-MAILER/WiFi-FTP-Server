@@ -1,0 +1,6 @@
+{
+  "name": "WiFi FTP Server",
+  "description": "Transform your phone into an offline, lightning-fast WiFi FTP server. No user credentials required by default, customizable port settings, and scan to connect support included.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

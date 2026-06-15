@@ -22,14 +22,38 @@ jobs:
         java-version: '17'
         cache: 'gradle'
 
-    - name: Restore or Download Gradle Wrapper JAR
+    - name: Restore or Download Gradle Wrapper Files
       run: |
         mkdir -p gradle/wrapper
+        
+        # 1. Restore gradle-wrapper.properties if missing
+        if [ ! -f gradle/wrapper/gradle-wrapper.properties ]; then
+          echo "gradle-wrapper.properties is missing! Recreating..."
+          cat << 'EOF' > gradle/wrapper/gradle-wrapper.properties
+distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\://services.gradle.org/distributions/gradle-9.3.1-bin.zip
+networkTimeout=10000
+validateDistributionUrl=true
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+EOF
+        else
+          echo "gradle-wrapper.properties is already present."
+        fi
+
+        # 2. Restore gradle-wrapper.jar if missing
         if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-          echo "Gradle wrapper JAR is missing. Downloading v9.3.1 official wrapper JAR..."
+          echo "gradle-wrapper.jar is missing! Downloading official Gradle v9.3.1 wrapper JAR..."
           curl -Lo gradle/wrapper/gradle-wrapper.jar https://github.com/gradle/gradle/raw/v9.3.1/gradle/wrapper/gradle-wrapper.jar
         else
-          echo "Gradle wrapper JAR is already present."
+          echo "gradle-wrapper.jar is already present."
+        fi
+
+        # 3. Restore gradlew launcher script if missing
+        if [ ! -f gradlew ]; then
+          echo "gradlew launcher script is missing! Downloading official Gradle v9.3.1 gradlew wrapper..."
+          curl -Lo gradlew https://github.com/gradle/gradle/raw/v9.3.1/gradlew
         fi
 
     - name: Change wrapper permissions

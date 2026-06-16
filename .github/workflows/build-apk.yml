@@ -31,28 +31,44 @@ jobs:
           echo "gradle-wrapper.properties is missing! Recreating..."
           echo "distributionBase=GRADLE_USER_HOME" > gradle/wrapper/gradle-wrapper.properties
           echo "distributionPath=wrapper/dists" >> gradle/wrapper/gradle-wrapper.properties
-          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-9.3.1-bin.zip" >> gradle/wrapper/gradle-wrapper.properties
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.0-bin.zip" >> gradle/wrapper/gradle-wrapper.properties
           echo "networkTimeout=10000" >> gradle/wrapper/gradle-wrapper.properties
           echo "validateDistributionUrl=true" >> gradle/wrapper/gradle-wrapper.properties
           echo "zipStoreBase=GRADLE_USER_HOME" >> gradle/wrapper/gradle-wrapper.properties
           echo "zipStorePath=wrapper/dists" >> gradle/wrapper/gradle-wrapper.properties
         else
           echo "gradle-wrapper.properties is already present."
+          # Strip windows carriage return if present
+          sed -i 's/\r$//' gradle/wrapper/gradle-wrapper.properties
         fi
 
-        # 2. Restore gradle-wrapper.jar if missing
-        if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-          echo "gradle-wrapper.jar is missing! Downloading official Gradle v9.3.1 wrapper JAR..."
-          curl -Lo gradle/wrapper/gradle-wrapper.jar https://github.com/gradle/gradle/raw/v9.3.1/gradle/wrapper/gradle-wrapper.jar
+        # Extract Gradle version from gradle-wrapper.properties
+        GRADLE_VERSION="8.0"
+        if [ -f gradle/wrapper/gradle-wrapper.properties ]; then
+          GRADLE_VERSION=$(grep 'distributionUrl' gradle/wrapper/gradle-wrapper.properties | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n 1 || echo "8.0")
+        fi
+        echo "Project is using Gradle version: ${GRADLE_VERSION}"
+
+        # 2. Restore or repair gradle-wrapper.jar if missing or corrupt
+        if [ -f gradle/wrapper/gradle-wrapper.jar ] && unzip -t gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
+          echo "gradle-wrapper.jar is present and is a valid ZIP/JAR archive."
         else
-          echo "gradle-wrapper.jar is already present."
+          echo "gradle-wrapper.jar is missing, corrupted, or an LFS pointer. Redownloading clean wrapper JAR..."
+          rm -f gradle/wrapper/gradle-wrapper.jar
+          # Try to download the exact version, fallback to 8.0 if not found
+          curl -fLo gradle/wrapper/gradle-wrapper.jar "https://github.com/gradle/gradle/raw/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar" || \
+          curl -Lo gradle/wrapper/gradle-wrapper.jar "https://github.com/gradle/gradle/raw/v8.0/gradle/wrapper/gradle-wrapper.jar"
         fi
 
         # 3. Restore gradlew launcher script if missing
         if [ ! -f gradlew ]; then
-          echo "gradlew launcher script is missing! Downloading official Gradle v9.3.1 gradlew wrapper..."
-          curl -Lo gradlew https://github.com/gradle/gradle/raw/v9.3.1/gradlew
+          echo "gradlew launcher script is missing! Downloading official Gradle gradlew wrapper..."
+          curl -Lo gradlew "https://github.com/gradle/gradle/raw/v${GRADLE_VERSION}/gradlew" || \
+          curl -Lo gradlew "https://github.com/gradle/gradle/raw/v8.0/gradlew"
         fi
+
+        # 4. Standardize line endings of gradlew launcher (resolves CRLF failures when commit/push is from Windows)
+        sed -i 's/\r$//' gradlew
 
     - name: Change wrapper permissions
       run: chmod +x gradlew
@@ -81,11 +97,36 @@ jobs:
           keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
         fi
 
-    - name: Build Debug APK
-      run: ./gradlew assembleDebug
+    - name: Restore Release Keystore File
+      run: |
+        if [ -n "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ]; then
+          echo "Decoding release keystore from secrets..."
+          echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+          echo "HAS_RELEASE_KEYSTORE=true" >> $GITHUB_ENV
+        else
+          echo "No release keystore secret provided. Building debug binary..."
+          echo "HAS_RELEASE_KEYSTORE=false" >> $GITHUB_ENV
+        fi
 
-    - name: Upload Debug APK
+    - name: Build APK (Release or Debug)
+      env:
+        KEYSTORE_PATH: ../release.keystore
+        STORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+      run: |
+        if [ "${{ env.HAS_RELEASE_KEYSTORE }}" = "true" ]; then
+          echo "Building signed Release APK..."
+          ./gradlew assembleRelease
+        else
+          echo "Building Debug APK..."
+          ./gradlew assembleDebug
+        fi
+
+    - name: Upload Compiled APKs
       uses: actions/upload-artifact@v4
       with:
-        name: debug-apk
-        path: app/build/outputs/apk/debug/app-debug.apk
+        name: compiled-apks
+        path: |
+          app/build/outputs/apk/release/*.apk
+          app/build/outputs/apk/debug/*.apk

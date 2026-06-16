@@ -47,27 +47,32 @@ jobs:
         if [ -f gradle/wrapper/gradle-wrapper.properties ]; then
           GRADLE_VERSION=$(grep 'distributionUrl' gradle/wrapper/gradle-wrapper.properties | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n 1 || echo "8.0")
         fi
-        echo "Project is using Gradle version: ${GRADLE_VERSION}"
+        echo "Project is configured for Gradle version: ${GRADLE_VERSION}"
 
-        # 2. Restore or repair gradle-wrapper.jar if missing or corrupt
-        if [ -f gradle/wrapper/gradle-wrapper.jar ] && unzip -t gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
-          echo "gradle-wrapper.jar is present and is a valid ZIP/JAR archive."
+        # 2. Re-generate wrapper natively if gradle is pre-installed in the runner.
+        # This completely overwrites any corrupted local files or Git LFS placeholder artifacts cleanly.
+        if command -v gradle >/dev/null 2>&1; then
+          echo "Regenerating wrapper natively using GHA runner pre-installed Gradle..."
+          gradle wrapper --gradle-version ${GRADLE_VERSION}
         else
-          echo "gradle-wrapper.jar is missing, corrupted, or an LFS pointer. Redownloading clean wrapper JAR..."
-          rm -f gradle/wrapper/gradle-wrapper.jar
-          # Try to download the exact version, fallback to 8.0 if not found
+          echo "GHA runner does not have pre-installed Gradle. Downloading clean files via cURL..."
+          # Clean any potentially corrupted local jar/gradlew
+          rm -f gradle/wrapper/gradle-wrapper.jar gradlew
+          
+          # Download using correct GitHub raw paths with -f (fail-fast to trigger proper fallback)
+          curl -fLo gradle/wrapper/gradle-wrapper.jar "https://github.com/gradle/gradle/raw/v${GRADLE_VERSION}.0/gradle/wrapper/gradle-wrapper.jar" || \
           curl -fLo gradle/wrapper/gradle-wrapper.jar "https://github.com/gradle/gradle/raw/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar" || \
-          curl -Lo gradle/wrapper/gradle-wrapper.jar "https://github.com/gradle/gradle/raw/v8.0/gradle/wrapper/gradle-wrapper.jar"
+          curl -fLo gradle/wrapper/gradle-wrapper.jar "https://github.com/gradle/gradle/raw/v8.0.0/gradle/wrapper/gradle-wrapper.jar" || \
+          curl -Lo gradle/wrapper/gradle-wrapper.jar "https://github.com/gradle/gradle/raw/master/gradle/wrapper/gradle-wrapper.jar"
+
+          # Download the launcher script
+          curl -fLo gradlew "https://github.com/gradle/gradle/raw/v${GRADLE_VERSION}.0/gradlew" || \
+          curl -fLo gradlew "https://github.com/gradle/gradle/raw/v${GRADLE_VERSION}/gradlew" || \
+          curl -fLo gradlew "https://github.com/gradle/gradle/raw/v8.0.0/gradlew" || \
+          curl -Lo gradlew "https://github.com/gradle/gradle/raw/master/gradlew"
         fi
 
-        # 3. Restore gradlew launcher script if missing
-        if [ ! -f gradlew ]; then
-          echo "gradlew launcher script is missing! Downloading official Gradle gradlew wrapper..."
-          curl -Lo gradlew "https://github.com/gradle/gradle/raw/v${GRADLE_VERSION}/gradlew" || \
-          curl -Lo gradlew "https://github.com/gradle/gradle/raw/v8.0/gradlew"
-        fi
-
-        # 4. Standardize line endings of gradlew launcher (resolves CRLF failures when commit/push is from Windows)
+        # 3. Standardize launcher endings to LF
         sed -i 's/\r$//' gradlew
 
     - name: Change wrapper permissions

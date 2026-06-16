@@ -19,6 +19,7 @@ class SimpleFtpServer(
     private val authPass: String,
     private val rootDir: File,
     private val localIpAddress: String,
+    private val serverProtocol: String,
     private val listener: FtpServerListener
 ) {
     interface FtpServerListener {
@@ -37,7 +38,7 @@ class SimpleFtpServer(
         Thread {
             try {
                 serverSocket = ServerSocket(port)
-                listener.onLog("Server started on ftp://$localIpAddress:$port")
+                listener.onLog("$serverProtocol Server started on ${serverProtocol.lowercase()}://$localIpAddress:$port")
                 listener.onLog("Root directory: ${rootDir.absolutePath}")
 
                 while (isRunning) {
@@ -109,9 +110,9 @@ class SimpleFtpServer(
         }
     }
 
-    inner class ClientSession(private val socket: Socket, private val clientIp: String) {
-        private val reader = BufferedReader(InputStreamReader(socket.getInputStream(), "UTF-8"))
-        private val writer = BufferedOutputStream(socket.getOutputStream())
+    inner class ClientSession(private var socket: Socket, private val clientIp: String) {
+        private var reader = BufferedReader(InputStreamReader(socket.getInputStream(), "UTF-8"))
+        private var writer = BufferedOutputStream(socket.getOutputStream())
         
         private var isAuthed = isAnonymous
         private var userEntered: String? = null
@@ -119,9 +120,10 @@ class SimpleFtpServer(
         
         private var passiveServerSocket: ServerSocket? = null
         private var passiveDataSocket: Socket? = null
+        private var isDataSecure = false
 
         fun run() {
-            sendResponse("220 Welcome to WiFi FTP Server")
+            sendResponse("220 Welcome to WiFi FTP/FTPS Server")
             while (isRunning) {
                 val line = reader.readLine() ?: break
                 val parts = line.split(" ", limit = 2)
@@ -132,6 +134,42 @@ class SimpleFtpServer(
 
                 try {
                     when (command) {
+                        "AUTH" -> {
+                            if (args.uppercase(Locale.US) == "TLS" || args.uppercase(Locale.US) == "SSL") {
+                                sendResponse("234 AUTH TLS OK.")
+                                try {
+                                    val sslContext = SslHelper.getSslContext()
+                                    val sslSocket = sslContext.socketFactory.createSocket(
+                                        socket,
+                                        socket.inetAddress.hostAddress,
+                                        socket.port,
+                                        true
+                                    ) as javax.net.ssl.SSLSocket
+                                    sslSocket.useClientMode = false
+                                    sslSocket.startHandshake()
+                                    socket = sslSocket
+                                    reader = BufferedReader(InputStreamReader(sslSocket.inputStream, "UTF-8"))
+                                    writer = BufferedOutputStream(sslSocket.outputStream)
+                                    listener.onLog("[$clientIp] Explicit FTPS TLS Handshake completed successfully!")
+                                } catch (e: Exception) {
+                                    listener.onLog("FTPS Handshake failed with $clientIp: ${e.message}")
+                                }
+                            } else {
+                                sendResponse("504 Security mechanism not supported.")
+                            }
+                        }
+                        "PBSZ" -> {
+                            sendResponse("200 PBSZ set to $args")
+                        }
+                        "PROT" -> {
+                            if (args.uppercase(Locale.US) == "P") {
+                                isDataSecure = true
+                                sendResponse("200 Data channel port protection set to Private.")
+                            } else {
+                                isDataSecure = false
+                                sendResponse("200 Data channel port protection set to Clear.")
+                            }
+                        }
                         "USER" -> handleUser(args)
                         "PASS" -> handlePass(args)
                         "SYST" -> sendResponse("215 UNIX Type: L8")
@@ -141,6 +179,9 @@ class SimpleFtpServer(
                             featResponse.append(" UTF8\r\n")
                             featResponse.append(" SIZE\r\n")
                             featResponse.append(" MDTM\r\n")
+                            featResponse.append(" AUTH TLS\r\n")
+                            featResponse.append(" PBSZ\r\n")
+                            featResponse.append(" PROT\r\n")
                             featResponse.append("211 End")
                             sendResponse(featResponse.toString())
                         }
@@ -237,7 +278,12 @@ class SimpleFtpServer(
             closePassive()
 
             try {
-                val tempServer = ServerSocket(0)
+                val tempServer = if (isDataSecure) {
+                    val sslContext = SslHelper.getSslContext()
+                    sslContext.serverSocketFactory.createServerSocket(0)
+                } else {
+                    ServerSocket(0)
+                }
                 tempServer.soTimeout = 10000 // 10 seconds timeout for client to connect
                 passiveServerSocket = tempServer
                 

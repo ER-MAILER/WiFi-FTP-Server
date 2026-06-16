@@ -1,9 +1,6 @@
 package com.example.data
 
-import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
-import androidx.room.Query
+import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -16,4 +13,14 @@ interface FtpConfigDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveConfig(config: FtpConfigEntity)
+
+    // Remote server profiles
+    @Query("SELECT * FROM remote_servers ORDER BY id DESC")
+    fun getRemoteServersFlow(): Flow<List<RemoteServerEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveRemoteServer(server: RemoteServerEntity)
+
+    @Delete
+    suspend fun deleteRemoteServer(server: RemoteServerEntity)
 }

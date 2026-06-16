@@ -65,6 +65,8 @@ class FtpServerService : Service() {
     }
 
     private var ftpServer: SimpleFtpServer? = null
+    private var sftpServer: SimpleSftpServer? = null
+    private var tftpServer: SimpleTftpServer? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -103,6 +105,7 @@ class FtpServerService : Service() {
                 val pass = config.password
                 val rootType = config.rootDirType
                 val customPath = config.customPath
+                val protocol = config.serverProtocol
 
                 // Resolve target directory
                 val targetDir = if (rootType == "SANDBOX") {
@@ -127,31 +130,65 @@ class FtpServerService : Service() {
                 FtpServerState.port.value = configuredPort
                 FtpServerState.ipAddress.value = currentIp
                 FtpServerState.isRunning.value = true
-                FtpServerState.addLog("Initializing server...")
+                FtpServerState.addLog("Initializing $protocol Server...")
 
-                // Start Server Instance
-                ftpServer = SimpleFtpServer(
-                    port = configuredPort,
-                    isAnonymous = isAnon,
-                    authUser = user,
-                    authPass = pass,
-                    rootDir = targetDir,
-                    localIpAddress = currentIp,
-                    listener = object : SimpleFtpServer.FtpServerListener {
-                        override fun onLog(message: String) {
-                            FtpServerState.addLog(message)
-                        }
+                when (protocol) {
+                    "FTP", "FTPS" -> {
+                        ftpServer = SimpleFtpServer(
+                            port = configuredPort,
+                            isAnonymous = isAnon,
+                            authUser = user,
+                            authPass = pass,
+                            rootDir = targetDir,
+                            localIpAddress = currentIp,
+                            serverProtocol = protocol,
+                            listener = object : SimpleFtpServer.FtpServerListener {
+                                override fun onLog(message: String) {
+                                    FtpServerState.addLog(message)
+                                }
 
-                        override fun onClientCountChanged(count: Int) {
-                            FtpServerState.clientCount.value = count
-                        }
+                                override fun onClientCountChanged(count: Int) {
+                                    FtpServerState.clientCount.value = count
+                                }
+                            }
+                        )
+                        ftpServer?.start()
                     }
-                )
+                    "SFTP" -> {
+                        sftpServer = SimpleSftpServer(
+                            port = configuredPort,
+                            isAnonymous = isAnon,
+                            authUser = user,
+                            authPass = pass,
+                            rootDir = targetDir,
+                            listener = object : SimpleSftpServer.SftpServerListener {
+                                override fun onLog(message: String) {
+                                    FtpServerState.addLog(message)
+                                }
 
-                ftpServer?.start()
+                                override fun onClientCountChanged(count: Int) {
+                                    FtpServerState.clientCount.value = count
+                                }
+                            }
+                        )
+                        sftpServer?.start()
+                    }
+                    "TFTP" -> {
+                        tftpServer = SimpleTftpServer(
+                            port = configuredPort,
+                            rootDir = targetDir,
+                            listener = object : SimpleTftpServer.TftpServerListener {
+                                override fun onLog(message: String) {
+                                    FtpServerState.addLog(message)
+                                }
+                            }
+                        )
+                        tftpServer?.start()
+                    }
+                }
 
                 // Register foreground notification
-                startForeground(NOTIFICATION_ID, buildNotification(currentIp, configuredPort))
+                startForeground(NOTIFICATION_ID, buildNotification(currentIp, configuredPort, protocol))
 
             } catch (e: Exception) {
                 FtpServerState.addLog("Failed to start server: ${e.message}")
@@ -166,6 +203,13 @@ class FtpServerService : Service() {
         FtpServerState.addLog("Stopping Server...")
         ftpServer?.stop()
         ftpServer = null
+        
+        sftpServer?.stop()
+        sftpServer = null
+
+        tftpServer?.stop()
+        tftpServer = null
+
         FtpServerState.isRunning.value = false
         FtpServerState.clientCount.value = 0
         
@@ -192,7 +236,7 @@ class FtpServerService : Service() {
         }
     }
 
-    private fun buildNotification(ip: String, port: Int): Notification {
+    private fun buildNotification(ip: String, port: Int, protocol: String): Notification {
         val stopIntent = Intent(this, FtpServerService::class.java).apply {
             action = ACTION_STOP
         }
@@ -211,9 +255,10 @@ class FtpServerService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val scheme = protocol.lowercase(Locale.getDefault())
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("WiFi FTP Server Running")
-            .setContentText("Access: ftp://$ip:$port")
+            .setContentTitle("WiFi $protocol Server Running")
+            .setContentText("Access: $scheme://$ip:$port")
             .setSmallIcon(android.R.drawable.stat_sys_upload_done)
             .setContentIntent(mainPendingIntent)
             .setOngoing(true)

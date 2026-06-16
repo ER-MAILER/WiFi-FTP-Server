@@ -21,12 +21,24 @@ android {
   }
 
   signingConfigs {
+    val hasReleaseKeys = !System.getenv("STORE_PASSWORD").isNullOrEmpty() &&
+                         !System.getenv("KEY_PASSWORD").isNullOrEmpty() &&
+                         file(System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks").exists()
+
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
+      if (hasReleaseKeys) {
+        val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
+        storeFile = file(keystorePath)
+        storePassword = System.getenv("STORE_PASSWORD")
+        keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
+        keyPassword = System.getenv("KEY_PASSWORD")
+      } else {
+        // Fallback to debug configuration if release secrets/file is missing
+        storeFile = file("${rootDir}/debug.keystore")
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
+      }
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")
@@ -117,6 +129,7 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
   implementation(libs.zxing.core)
+  implementation("com.github.mwiede:jsch:0.2.20")
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }

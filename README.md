@@ -6,7 +6,7 @@ Designed with **Jetpack Compose** and **Material Design 3**, this app blends top
 
 ---
 
-## Visual Preview & Design Philosophy
+## 🎨 Visual Preview & Design Philosophy
 This application uses a highly customized **Slate Twilight** theme, utilizing:
 - **Elegant Negative Space**: Clean margins and proportional padding for reduced visual clutter and effortless readability.
 - **Adaptive QR Panel**: The setup and QR scanning section remain cleanly hidden while the server is offline, then fluidly transition into view using Jetpack Compose's `AnimatedVisibility` when launched.
@@ -14,7 +14,7 @@ This application uses a highly customized **Slate Twilight** theme, utilizing:
 
 ---
 
-## Key Features
+## 🚀 Key Features
 
 *   **Dynamic QR Code Connection**: No need to manually type long, complex IP addresses. Once the server starts, a high-resolution QR code is generated instantly showing the active FTP URL for swift access.
 *   **Intelligent Network Autodetect**: Seamlessly detects and binds to your active connection interface—whether you're on standard **Wi-Fi**, local **Ethernet**, **Portable Mobile Hotspot (AP/SoftAP)**, or **USB Tethering** links.

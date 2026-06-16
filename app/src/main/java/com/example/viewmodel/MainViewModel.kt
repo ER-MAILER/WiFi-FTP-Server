@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.FtpConfigEntity
 import com.example.data.FtpConfigRepository
+import com.example.data.RemoteServerEntity
 import com.example.server.FtpServerService
 import com.example.server.FtpServerState
 import kotlinx.coroutines.flow.SharingStarted
@@ -30,6 +31,14 @@ class MainViewModel(private val repository: FtpConfigRepository) : ViewModel() {
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = FtpConfigEntity()
+        )
+
+    // Remote server connection profiles
+    val remoteServers: StateFlow<List<RemoteServerEntity>> = repository.remoteServersFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
         )
 
     fun startStopServer(context: Context) {
@@ -61,6 +70,18 @@ class MainViewModel(private val repository: FtpConfigRepository) : ViewModel() {
     fun updateConfig(config: FtpConfigEntity) {
         viewModelScope.launch {
             repository.saveConfig(config)
+        }
+    }
+
+    fun saveRemoteServer(server: RemoteServerEntity) {
+        viewModelScope.launch {
+            repository.saveRemoteServer(server)
+        }
+    }
+
+    fun deleteRemoteServer(server: RemoteServerEntity) {
+        viewModelScope.launch {
+            repository.deleteRemoteServer(server)
         }
     }
 
